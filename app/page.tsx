@@ -1,46 +1,24 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+
+interface VideoVariant {
+  url: string
+  quality: string
+  bitrate: number
+}
+
+interface ExtractResult {
+  variants: VideoVariant[]
+  thumbnail: string
+  tweetId: string
+  authorName: string
+  authorHandle: string
+}
+
 const heroImage = 'https://www.figma.com/api/mcp/asset/09f94a8e-9a98-462a-b79d-e53d1a1885a7'
-const sectionOneImage = 'https://www.figma.com/api/mcp/asset/ca6f37a1-1d10-4f77-99d5-5a89d9e6d977'
-const sectionTwoImage = 'https://www.figma.com/api/mcp/asset/87677944-3876-49ea-9efa-cfacc8b17997'
-const sectionThreeImage = 'https://www.figma.com/api/mcp/asset/7be237b6-b395-46e2-8900-dab8d01dc9fc'
 const cartIcon = 'https://www.figma.com/api/mcp/asset/ba8a5b94-e694-4ac2-bb70-b8e3cd959906'
-const instagramIcon = 'https://www.figma.com/api/mcp/asset/e1a17616-3ab3-4133-9c7c-d5e77a24af2a'
-const twitterIcon = 'https://www.figma.com/api/mcp/asset/3b10087e-4fb5-4d44-9d08-5383ce0b514e'
 const arrowIcon = 'https://www.figma.com/api/mcp/asset/8b3f8111-59da-4aad-a7e0-14af3f87a343'
-
-const navLinks = ['Equipment', 'About us', 'Blog']
-
-const sections = [
-  {
-    number: '01',
-    eyebrow: 'Get Started',
-    title: 'What level of hiker are you?',
-    body:
-      'Determining what level of hiker you are can be an important tool when planning future hikes. This hiking level guide will help you plan hikes according to different hike ratings set by various websites like All Trails and Modern Hiker. What type of hiker are you - novice, moderate, advanced moderate, expert, or expert backpacker?',
-    image: sectionOneImage,
-    imageAlt: 'Hiker on a ridge with mountains behind them',
-    reverse: false,
-  },
-  {
-    number: '02',
-    eyebrow: 'Hiking essentials',
-    title: 'Picking the right Hiking Gear!',
-    body:
-      'The nice thing about beginning hiking is that you do not really need any special gear, you can probably get away with things you already have. Let us start with clothing. A typical mistake hiking beginners make is wearing jeans and regular clothes, which will get heavy and chafe when they get sweaty or wet.',
-    image: sectionTwoImage,
-    imageAlt: 'Hiker standing on a snowy mountain ledge',
-    reverse: true,
-  },
-  {
-    number: '03',
-    eyebrow: 'Where you go is the key',
-    title: 'Understand Your Map & Timing',
-    body:
-      'To start, print out the hiking guide and map. If it is raining, throw them in a zip-lock bag. Read over the guide, study the map, and have a good idea of what to expect. I like to know what my next landmark is as I hike. For example, I will read the guide and know that in a mile I make a right turn at the junction.',
-    image: sectionThreeImage,
-    imageAlt: 'Compass in hand overlooking a mountainous trail',
-    reverse: false,
-  },
-]
 
 function LogoMark() {
   return <span className="tracking-[0.22em]">MNTN</span>
@@ -48,79 +26,128 @@ function LogoMark() {
 
 function ArrowLink({ label }: { label: string }) {
   return (
-    <a href="#" className="inline-flex items-center gap-3 text-[0.9rem] font-semibold text-[#fbd784] transition-transform duration-300 hover:translate-x-1">
+    <span className="inline-flex items-center gap-3 text-[0.9rem] font-semibold text-[#fbd784]">
       <span>{label}</span>
       <img src={arrowIcon} alt="" aria-hidden className="h-4 w-4 -rotate-90" />
-    </a>
+    </span>
   )
 }
 
-function SectionBlock({
-  number,
-  eyebrow,
-  title,
-  body,
-  image,
-  imageAlt,
-  reverse,
-}: {
-  number: string
-  eyebrow: string
-  title: string
-  body: string
-  image: string
-  imageAlt: string
-  reverse: boolean
-}) {
-  const textOrder = reverse ? 'lg:order-2' : 'lg:order-1'
-  const imageOrder = reverse ? 'lg:order-1' : 'lg:order-2'
-
+function IconSearch() {
   return (
-    <section className="relative">
-      <div className="absolute left-0 top-0 select-none text-[clamp(5rem,12vw,15rem)] font-bold leading-none text-white/10">
-        {number}
-      </div>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  )
+}
 
-      <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-        <div className={`${textOrder} relative max-w-[40rem] pt-20 lg:pt-0`}>
-          <div className="mb-7 flex items-center gap-6">
-            <span className="h-px w-16 bg-[#fbd784]" />
-            <span className="text-[0.72rem] font-black uppercase tracking-[0.38em] text-[#fbd784]">
-              {eyebrow}
-            </span>
-          </div>
+function IconDownload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
 
-          <h2 className="max-w-[34rem] font-display text-[clamp(2.8rem,5vw,4.5rem)] leading-[0.95] text-white">
-            {title}
-          </h2>
-
-          <p className="mt-7 max-w-[40rem] text-[0.95rem] leading-8 text-white/88 lg:text-[1.02rem]">
-            {body}
-          </p>
-
-          <div className="mt-8">
-            <ArrowLink label="read more" />
-          </div>
-        </div>
-
-        <div className={`${imageOrder} relative justify-self-center lg:justify-self-end`}>
-          <div className="relative aspect-[0.78] w-[min(100%,22rem)] overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.35)] ring-1 ring-white/8 sm:w-[22rem] lg:w-[28rem]">
-            <img src={image} alt={imageAlt} className="h-full w-full object-cover" />
-          </div>
-        </div>
-      </div>
-    </section>
+function IconCheck() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
   )
 }
 
 export default function Home() {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<ExtractResult | null>(null)
+  const [selectedQuality, setSelectedQuality] = useState<VideoVariant | null>(null)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadDone, setDownloadDone] = useState(false)
+  const [downloadStatus, setDownloadStatus] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (result?.variants?.length) {
+      setSelectedQuality(result.variants[0])
+    }
+  }, [result])
+
+  const handleExtract = useCallback(async () => {
+    const trimmed = url.trim()
+    if (!trimmed) return
+
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    setDownloadDone(false)
+
+    try {
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Extraction failed')
+      setResult(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
+  }, [url])
+
+  const handleDownload = useCallback(async () => {
+    if (!selectedQuality || !result) return
+
+    setDownloading(true)
+    setDownloadDone(false)
+    setError(null)
+    setDownloadStatus('Downloading…')
+
+    try {
+      const dlUrl = `/api/download?url=${encodeURIComponent(selectedQuality.url)}&quality=${encodeURIComponent(selectedQuality.quality)}`
+      const res = await fetch(dlUrl)
+      if (!res.ok) throw new Error('Download failed')
+
+      const blob = await res.blob()
+      setDownloadStatus('Saving…')
+
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `twitter_video_${selectedQuality.quality}_${result.tweetId}.mp4`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
+
+      setDownloadDone(true)
+      setDownloadStatus('')
+      setTimeout(() => setDownloadDone(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed')
+      setDownloadStatus('')
+    } finally {
+      setDownloading(false)
+    }
+  }, [selectedQuality, result])
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') handleExtract()
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#0b1d26] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_34%),linear-gradient(180deg,rgba(11,29,38,0.15)_0%,rgba(11,29,38,0.82)_55%,#0b1d26_88%)]" />
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[78rem] opacity-95">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[62rem] opacity-95">
         <img src={heroImage} alt="" aria-hidden className="h-full w-full object-cover object-center" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(11,29,38,0.18)_0%,rgba(11,29,38,0.3)_36%,rgba(11,29,38,0.96)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(11,29,38,0.14)_0%,rgba(11,29,38,0.3)_36%,rgba(11,29,38,0.96)_100%)]" />
       </div>
 
       <header className="relative z-10 mx-auto flex w-full max-w-[1600px] items-center justify-between px-6 py-8 sm:px-10 lg:px-20">
@@ -128,101 +155,136 @@ export default function Home() {
           <LogoMark />
         </a>
 
-        <nav className="hidden items-center gap-10 text-sm font-semibold text-white/90 md:flex">
-          {navLinks.map((link) => (
-            <a key={link} href="#" className="transition-colors hover:text-[#fbd784]">
-              {link}
-            </a>
-          ))}
-        </nav>
-
-        <a href="#" className="inline-flex items-center gap-3 text-sm font-semibold text-white/95 transition-colors hover:text-[#fbd784]">
+        <a href="#download" className="inline-flex items-center gap-3 text-sm font-semibold text-white/95 transition-colors hover:text-[#fbd784]">
           <img src={cartIcon} alt="" aria-hidden className="h-5 w-5" />
-          <span>Account</span>
+          <span>Download</span>
         </a>
       </header>
 
-      <aside className="pointer-events-none fixed left-6 top-1/2 z-10 hidden -translate-y-1/2 md:flex md:flex-col md:items-center md:gap-5 lg:left-10 xl:left-20">
-        <span className="origin-center -rotate-90 text-sm font-semibold tracking-[0.28em] text-white">Follow us</span>
-        <a href="#" className="pointer-events-auto transition-transform hover:scale-110">
-          <img src={instagramIcon} alt="Instagram" className="h-6 w-6" />
-        </a>
-        <a href="#" className="pointer-events-auto transition-transform hover:scale-110">
-          <img src={twitterIcon} alt="Twitter" className="h-6 w-6" />
-        </a>
-      </aside>
-
-      <aside className="pointer-events-none fixed right-6 top-1/2 z-10 hidden -translate-y-1/2 items-start gap-5 lg:flex lg:right-10 xl:right-20">
-        <div className="flex h-[15rem] flex-col items-end justify-between py-1 text-right text-sm font-semibold text-white">
-          <span className="text-xs uppercase tracking-[0.35em] text-white/95">Start</span>
-          <span>01</span>
-          <span className="text-white/70">02</span>
-          <span className="text-white/70">03</span>
-        </div>
-        <div className="relative h-[15rem] w-px bg-white/35">
-          <div className="absolute top-0 h-[3.75rem] w-px bg-white" />
-        </div>
-      </aside>
-
-      <div id="top" className="relative z-10 mx-auto min-h-[calc(100vh-7.5rem)] max-w-[1600px] px-6 pb-20 pt-12 sm:px-10 lg:px-20 lg:pb-28 lg:pt-20">
-        <section className="max-w-[62rem] pt-16 sm:pt-24 lg:pt-28">
+      <div id="top" className="relative z-10 mx-auto flex min-h-[calc(100vh-7.5rem)] max-w-[1600px] items-center px-6 pb-16 pt-12 sm:px-10 lg:px-20 lg:pb-24 lg:pt-18">
+        <section className="max-w-[68rem]">
           <div className="mb-7 flex items-center gap-6">
             <span className="h-px w-16 bg-[#fbd784]" />
             <span className="text-[0.72rem] font-black uppercase tracking-[0.42em] text-[#fbd784]">
-              A hiking guide
+              X video downloader
             </span>
           </div>
 
-          <h1 className="max-w-[60rem] font-display text-[clamp(3.25rem,7vw,5.5rem)] leading-[0.92] text-white [text-wrap:balance]">
-            Be Prepared For The Mountains And Beyond!
+          <h1 className="max-w-[60rem] font-display text-[clamp(3.1rem,7vw,5.5rem)] leading-[0.92] text-white [text-wrap:balance]">
+            Download X videos with the MNTN look.
           </h1>
 
+          <p className="mt-6 max-w-[36rem] text-[0.98rem] leading-8 text-white/82 sm:text-[1.05rem]">
+            Paste a tweet or X post link, extract the available video qualities, and download the one you want.
+          </p>
+
           <div className="mt-8">
-            <ArrowLink label="scroll down" />
+            <ArrowLink label="paste your link below" />
           </div>
         </section>
       </div>
 
-      <div className="relative z-10 mx-auto max-w-[1600px] px-6 pb-24 sm:px-10 lg:px-20 lg:pb-32">
-        <div className="space-y-28 lg:space-y-36">
-          {sections.map((section) => (
-            <SectionBlock key={section.number} {...section} />
-          ))}
-        </div>
-
-        <footer className="mt-28 grid gap-14 border-t border-white/10 pt-16 lg:grid-cols-[1.15fr_.9fr_.8fr] lg:gap-10 lg:pt-20">
-          <div>
-            <a href="#top" className="font-display text-2xl tracking-[0.28em] text-white">
-              <LogoMark />
-            </a>
-            <p className="mt-10 max-w-sm text-[1.02rem] leading-8 text-white/90">
-              Get out there &amp; discover your next slope, mountain &amp; destination!
-            </p>
-            <p className="mt-14 text-sm text-white/40">
-              Copyright 2023 MNTN, Inc. Terms &amp; Privacy
-            </p>
+      <div id="download" className="relative z-10 mx-auto max-w-[1600px] px-6 pb-24 sm:px-10 lg:px-20 lg:pb-32">
+        <section className="max-w-[56rem] rounded-[2rem] border border-white/10 bg-[#08141d]/72 p-6 shadow-[0_32px_120px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <input
+              type="url"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="https://x.com/user/status/..."
+              className="h-14 flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 text-[0.95rem] text-white outline-none placeholder:text-white/35 focus:border-[#fbd784]/60 focus:bg-white/8"
+            />
+            <button
+              onClick={handleExtract}
+              disabled={loading || !url.trim()}
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#fbd784] px-6 font-semibold text-[#0b1d26] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  <span>Scanning</span>
+                </>
+              ) : (
+                <>
+                  <IconSearch />
+                  <span>Extract</span>
+                </>
+              )}
+            </button>
           </div>
 
-          <div>
-            <h2 className="text-2xl font-bold text-[#fbd784]">More on The Blog</h2>
-            <ul className="mt-7 space-y-4 text-[1.02rem] leading-8 text-white/95">
-              <li>About MNTN</li>
-              <li>Contributors &amp; Writers</li>
-              <li>Write For Us</li>
-              <li>Contact Us</li>
-              <li>Privacy Policy</li>
-            </ul>
-          </div>
+          {error && (
+            <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
 
-          <div>
-            <h2 className="text-2xl font-bold text-[#fbd784]">More on MNTN</h2>
-            <ul className="mt-7 space-y-4 text-[1.02rem] leading-8 text-white/95">
-              <li>The Team</li>
-              <li>Jobs</li>
-              <li>Press</li>
-            </ul>
-          </div>
-        </footer>
+          {result && (
+            <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
+              <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5">
+                {result.thumbnail ? (
+                  <div className="relative aspect-[1.15] w-full">
+                    <img src={result.thumbnail} alt="Video thumbnail" className="h-full w-full object-cover" />
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(11,29,38,0.05)_0%,rgba(11,29,38,0.65)_100%)]" />
+                  </div>
+                ) : null}
+                <div className="p-5">
+                  <p className="text-sm font-semibold text-white">{result.authorName || 'Twitter Video'}</p>
+                  <p className="mt-1 text-xs text-white/60">@{result.authorHandle || 'unknown'}</p>
+                  <p className="mt-4 text-xs uppercase tracking-[0.3em] text-[#fbd784]">{result.variants.length} quality option{result.variants.length === 1 ? '' : 's'} found</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.38em] text-[#fbd784]">Select quality</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {result.variants.map((variant, index) => (
+                    <button
+                      key={`${variant.url}-${index}`}
+                      onClick={() => setSelectedQuality(variant)}
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${selectedQuality?.url === variant.url ? 'border-[#fbd784] bg-[#fbd784]/15 text-[#fbd784]' : 'border-white/10 bg-white/5 text-white/72 hover:border-white/20 hover:text-white'}`}
+                    >
+                      {variant.quality}
+                      {index === 0 ? <span className="ml-2 text-[10px] uppercase tracking-[0.28em] text-[#fbd784]/80">best</span> : null}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading || !selectedQuality}
+                  className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 font-bold transition-transform ${downloadDone ? 'border border-emerald-400/40 bg-emerald-400/10 text-emerald-200' : 'bg-[#fbd784] text-[#0b1d26] hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60'}`}
+                >
+                  {downloadDone ? (
+                    <>
+                      <IconCheck />
+                      <span>Downloaded</span>
+                    </>
+                  ) : downloading ? (
+                    <>
+                      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      <span>{downloadStatus || 'Downloading…'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconDownload />
+                      <span>Download {selectedQuality?.quality ?? 'video'}</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="mt-3 text-center text-[11px] text-white/45">
+                  Aspect ratio is preserved automatically.
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )
