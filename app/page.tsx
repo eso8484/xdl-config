@@ -216,15 +216,19 @@ export default function Home() {
 
           await ffmpeg.writeFile('input.mp4', await fetchFile(rawBlob))
 
-          /* setsar=1:1 forces square pixels + scale to correct display size */
+          /* Re-encode to correct display dimensions with square pixels.
+           * NOTE: -c copy is intentionally NOT used here — it bypasses
+           * video filters (like scale/setsar) entirely. We must re-encode. */
           const sarW = dims.w
           const sarH = dims.h
           await ffmpeg.exec([
             '-i', 'input.mp4',
-            '-c', 'copy',
-            '-vf', `setsar=1:1,scale=${sarW}:${sarH}`,
+            '-vf', `scale=${sarW}:${sarH}:flags=lanczos,setsar=1:1`,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '18',
+            '-c:a', 'copy',
             '-movflags', '+faststart',
-            '-metadata:s:v:0', `rotate=0`,
             'output.mp4',
           ])
 
