@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 
 /* ─── Types ─────────────────────────────────────────────── */
@@ -116,8 +116,6 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [darkMode, setDarkMode] = useState(true)
   const [showHistory, setShowHistory] = useState(false)
-  const ffmpegRef = useRef<import('@ffmpeg/ffmpeg').FFmpeg | null>(null)
-  const ffmpegLoadedRef = useRef(false)
 
   /* Load history & dark mode pref */
   useEffect(() => {
@@ -164,30 +162,6 @@ export default function Home() {
     }
   }, [url])
 
-  /* ── Load FFmpeg lazily ── */
-  const ensureFFmpeg = useCallback(async () => {
-    if (ffmpegLoadedRef.current && ffmpegRef.current) return ffmpegRef.current
-    setDownloadStatus('Loading video processor…')
-    const { FFmpeg } = await import('@ffmpeg/ffmpeg')
-    const { toBlobURL } = await import('@ffmpeg/util')
-    const ffmpeg = new FFmpeg()
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    })
-    ffmpegRef.current = ffmpeg
-    ffmpegLoadedRef.current = true
-    return ffmpeg
-  }, [])
-
-  /* ── Parse width×height from Twitter video URL ── */
-  const parseDimensions = (videoUrl: string): { w: number; h: number } | null => {
-    const m = videoUrl.match(/\/(\d+)x(\d+)\//)
-    if (!m) return null
-    return { w: parseInt(m[1]), h: parseInt(m[2]) }
-  }
-
   /* ── Download ── */
   const handleDownload = useCallback(async () => {
     if (!selectedQuality || !result) return
@@ -195,62 +169,19 @@ export default function Home() {
     setDownloading(true)
     setDownloadDone(false)
     setError(null)
-    setDownloadStatus('Fetching video…')
+    setDownloadStatus('Downloading…')
 
     try {
       const dlUrl = `/api/download?url=${encodeURIComponent(selectedQuality.url)}&quality=${encodeURIComponent(selectedQuality.quality)}`
       const res = await fetch(dlUrl)
       if (!res.ok) throw new Error('Download failed')
 
-      const rawBlob = await res.blob()
-      const dims = parseDimensions(selectedQuality.url)
-
-      let finalBlob = rawBlob
-
-      /* Fix aspect ratio using ffmpeg.wasm if we know the dimensions */
-      if (dims) {
-        try {
-          setDownloadStatus('Fixing aspect ratio…')
-          const ffmpeg = await ensureFFmpeg()
-          const { fetchFile } = await import('@ffmpeg/util')
-
-          await ffmpeg.writeFile('input.mp4', await fetchFile(rawBlob))
-
-          /* Re-encode to correct display dimensions with square pixels.
-           * NOTE: -c copy is intentionally NOT used here — it bypasses
-           * video filters (like scale/setsar) entirely. We must re-encode. */
-          const sarW = dims.w
-          const sarH = dims.h
-          await ffmpeg.exec([
-            '-i', 'input.mp4',
-            '-vf', `scale=${sarW}:${sarH}:flags=lanczos,setsar=1:1`,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '18',
-            '-c:a', 'copy',
-            '-movflags', '+faststart',
-            'output.mp4',
-          ])
-
-          const data = await ffmpeg.readFile('output.mp4')
-          const uint8 = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data))
-          // Copy to a plain ArrayBuffer to avoid SharedArrayBuffer issues
-          const plain = new ArrayBuffer(uint8.byteLength)
-          new Uint8Array(plain).set(uint8)
-          finalBlob = new Blob([plain], { type: 'video/mp4' })
-
-          /* Cleanup ffmpeg virtual FS */
-          await ffmpeg.deleteFile('input.mp4')
-          await ffmpeg.deleteFile('output.mp4')
-        } catch (ffErr) {
-          /* If ffmpeg fails, still give them the raw file — better than nothing */
-          console.warn('[ffmpeg] aspect fix failed, using raw:', ffErr)
-          finalBlob = rawBlob
-        }
-      }
+      /* The server already fixes aspect ratio (tkhd + pasp patching),
+       * so the blob is ready to save directly — no client-side processing needed. */
+      const blob = await res.blob()
 
       setDownloadStatus('Saving…')
-      const objectUrl = URL.createObjectURL(finalBlob)
+      const objectUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = objectUrl
       a.download = `twitter_video_${selectedQuality.quality}_${result.tweetId}.mp4`
@@ -284,7 +215,7 @@ export default function Home() {
     } finally {
       setDownloading(false)
     }
-  }, [selectedQuality, result, url, ensureFFmpeg])
+  }, [selectedQuality, result, url])
 
   /* ── Enter key ── */
   const handleKeyDown = (e: React.KeyboardEvent) => {
