@@ -21,7 +21,7 @@ const cartIcon = 'https://www.figma.com/api/mcp/asset/ba8a5b94-e694-4ac2-bb70-b8
 const arrowIcon = 'https://www.figma.com/api/mcp/asset/8b3f8111-59da-4aad-a7e0-14af3f87a343'
 
 function LogoMark() {
-  return <span className="tracking-[0.22em]">MNTN</span>
+  return <span className="tracking-[0.22em]">ESO</span>
 }
 
 function ArrowLink({ label }: { label: string }) {
@@ -171,7 +171,7 @@ export default function Home() {
           </div>
 
           <h1 className="max-w-[60rem] font-display text-[clamp(3.1rem,7vw,5.5rem)] leading-[0.92] text-white [text-wrap:balance]">
-            Download X videos with the MNTN look.
+            Download your X video.
           </h1>
 
           <p className="mt-6 max-w-[36rem] text-[0.98rem] leading-8 text-white/82 sm:text-[1.05rem]">
