@@ -1,25 +1,137 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 
-export const runtime = 'edge'
+// Node.js runtime so we can buffer + patch MP4 metadata
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
+/* ─── Security ──────────────────────────────────────────── */
 const ALLOWED_HOSTS = ['video.twimg.com', 'pbs.twimg.com', 'ton.twimg.com']
 
 function isAllowedUrl(url: string): boolean {
   try {
-    const parsed = new URL(url)
-    return ALLOWED_HOSTS.some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))
+    const { hostname } = new URL(url)
+    return ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`))
   } catch {
     return false
   }
 }
 
+/* ─── Pure-JS MP4 PASP (Pixel Aspect Ratio) Fixer ───────
+ *
+ *  Twitter videos occasionally carry a non-1:1 SAR (Sample Aspect
+ *  Ratio) flag inside the pasp atom. Players that respect it will
+ *  scale the picture and cause the "stretched" look.
+ *
+ *  Fix: walk the MP4 box tree, find every pasp box, and
+ *  set hSpacing = vSpacing = 1  (square pixels, no scaling).
+ *  This is a pure in-place rewrite — video data is untouched.
+ * ──────────────────────────────────────────────────────── */
+
+/** Recursively walk MP4 boxes and patch any pasp boxes found. */
+function patchPasp(buf: Buffer, start: number, end: number): void {
+  let pos = start
+
+  while (pos + 8 <= end) {
+    let size = buf.readUInt32BE(pos)
+    const type = buf.subarray(pos + 4, pos + 8).toString('latin1')
+
+    // Extended size (64-bit) — rare, skip safely
+    if (size === 1) {
+      if (pos + 16 > end) break
+      const hi = buf.readUInt32BE(pos + 8)
+      const lo = buf.readUInt32BE(pos + 12)
+      if (hi !== 0) break
+      size = lo
+    }
+
+    // size 0 means "to end of file" per spec
+    if (size === 0) size = end - pos
+    if (size < 8 || pos + size > end) break
+
+    /* ── patch pasp ── */
+    if (type === 'pasp' && size >= 16) {
+      buf.writeUInt32BE(1, pos + 8)   // hSpacing = 1
+      buf.writeUInt32BE(1, pos + 12)  // vSpacing = 1
+    }
+
+    /* ── recurse into containers ── */
+    const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'udta', 'mvex', 'dinf', 'edts', 'meta'])
+    if (CONTAINERS.has(type)) {
+      patchPasp(buf, pos + 8, pos + size)
+    }
+
+    // stsd: 4 bytes (version+flags) + 4 bytes (entry count) before children
+    if (type === 'stsd') {
+      patchPasp(buf, pos + 16, pos + size)
+    }
+
+    // Video codec sample entry boxes:
+    // 8 (header) + 78 (VisualSampleEntry fixed fields) = 86 bytes before children
+    // ISO 14496-12 §12.1.3 VisualSampleEntry layout:
+    //   6 reserved + 2 data-ref-index + 2 pre_defined + 2 reserved
+    //   + 12 pre_defined + 2 width + 2 height + 4 horiz-res + 4 vert-res
+    //   + 4 reserved + 2 frame-count + 32 compressor-name + 2 depth + 2 pre_defined
+    //   = 78 bytes
+    const VIDEO_ENTRIES = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'mp4v', 'dvh1', 'dvhe', 'av01', 'vp08', 'vp09'])
+    if (VIDEO_ENTRIES.has(type) && pos + 86 <= end) {
+      patchPasp(buf, pos + 86, pos + size)
+    }
+
+    pos += size
+  }
+}
+
+/**
+ * Buffers the full MP4, patches every pasp box to 1:1 (square pixels),
+ * and returns the corrected buffer. If the video is >120 MB we skip
+ * patching and stream it as-is to avoid OOM.
+ */
+async function fetchAndFixVideo(videoUrl: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const res = await fetch(videoUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+      Referer: 'https://twitter.com/',
+    },
+  })
+
+  if (!res.ok || !res.body) return null
+
+  const contentType = res.headers.get('Content-Type') ?? 'video/mp4'
+
+  const chunks: Buffer[] = []
+  const reader = res.body.getReader()
+  let totalBytes = 0
+  const MAX_BYTES = 120 * 1024 * 1024 // 120 MB safety cap
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) {
+      chunks.push(Buffer.from(value))
+      totalBytes += value.byteLength
+      if (totalBytes > MAX_BYTES) {
+        reader.cancel()
+        return null
+      }
+    }
+  }
+
+  const buffer = Buffer.concat(chunks)
+
+  // Patch pasp boxes in-place
+  patchPasp(buffer, 0, buffer.length)
+
+  return { buffer, contentType }
+}
+
+/* ─── Route Handler ─────────────────────────────────────── */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const videoUrl = searchParams.get('url')
   const quality = searchParams.get('quality') ?? 'video'
 
   if (!videoUrl) {
-    return new Response(JSON.stringify({ error: 'URL parameter is required' }), {
+    return new Response(JSON.stringify({ error: 'url param required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -32,37 +144,49 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  try {
-    const upstream = await fetch(videoUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-        Referer: 'https://twitter.com/',
-      },
-    })
+  const safeQuality = quality.replace(/[^a-zA-Z0-9]/g, '_')
+  const filename = `xdl_${safeQuality}.mp4`
 
-    if (!upstream.ok) {
-      return new Response(JSON.stringify({ error: 'Failed to fetch video from source' }), {
-        status: upstream.status,
-        headers: { 'Content-Type': 'application/json' },
+  try {
+    const result = await fetchAndFixVideo(videoUrl)
+
+    if (!result) {
+      // File too large — fall back to streaming proxy without patch
+      const upstream = await fetch(videoUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 AppleWebKit/537.36 Chrome/120',
+          Referer: 'https://twitter.com/',
+        },
       })
+      if (!upstream.ok || !upstream.body) {
+        return new Response(JSON.stringify({ error: 'Source fetch failed' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      const headers = new Headers({
+        'Content-Type': 'video/mp4',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      })
+      const cl = upstream.headers.get('Content-Length')
+      if (cl) headers.set('Content-Length', cl)
+      return new Response(upstream.body, { headers })
     }
 
-    const safeQuality = quality.replace(/[^a-zA-Z0-9]/g, '_')
-    const filename = `twitter_video_${safeQuality}.mp4`
-
-    const headers = new Headers({
-      'Content-Type': upstream.headers.get('Content-Type') ?? 'video/mp4',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': '*',
+    return new Response(new Uint8Array(result.buffer), {
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': String(result.buffer.byteLength),
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+        'X-Aspect-Fixed': 'true',
+      },
     })
-
-    const contentLength = upstream.headers.get('Content-Length')
-    if (contentLength) headers.set('Content-Length', contentLength)
-
-    return new Response(upstream.body, { headers })
   } catch (err) {
-    console.error('[download] error:', err)
+    console.error('[download]', err)
     return new Response(JSON.stringify({ error: 'Download failed' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
