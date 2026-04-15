@@ -27,8 +27,15 @@ function isAllowedUrl(url: string): boolean {
  *  This is a pure in-place rewrite — video data is untouched.
  * ──────────────────────────────────────────────────────── */
 
-/** Recursively walk MP4 boxes and patch any pasp boxes found. */
-function patchPasp(buf: Buffer, start: number, end: number): void {
+/** Recursively walk MP4 boxes and patch any pasp boxes found.
+ *  Also patches tkhd width/height if displayW/displayH are given. */
+function patchPasp(
+  buf: Buffer,
+  start: number,
+  end: number,
+  displayW?: number,
+  displayH?: number
+): void {
   let pos = start
 
   while (pos + 8 <= end) {
@@ -54,27 +61,36 @@ function patchPasp(buf: Buffer, start: number, end: number): void {
       buf.writeUInt32BE(1, pos + 12)  // vSpacing = 1
     }
 
+    /* ── patch tkhd width/height (16.16 fixed-point) ── */
+    if (type === 'tkhd' && displayW && displayH && size >= 92) {
+      // tkhd v0: 8(header)+4(ver+flags)+4(creation)+4(mod)+4(id)+4(res)+4(dur)
+      //          +8(reserved)+4(layer+alt)+4(volume)+8(reserved)+36(matrix)
+      //          = offset 76 → width (4 bytes), offset 80 → height (4 bytes)
+      // tkhd v1: same layout but times are 8 bytes each → offset 88
+      const version = buf.readUInt8(pos + 8)
+      const tkhdOffset = version === 1 ? 88 : 76
+      if (pos + tkhdOffset + 8 <= end) {
+        buf.writeUInt32BE(displayW << 16, pos + tkhdOffset)      // width  16.16
+        buf.writeUInt32BE(displayH << 16, pos + tkhdOffset + 4)  // height 16.16
+      }
+    }
+
     /* ── recurse into containers ── */
     const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'udta', 'mvex', 'dinf', 'edts', 'meta'])
     if (CONTAINERS.has(type)) {
-      patchPasp(buf, pos + 8, pos + size)
+      patchPasp(buf, pos + 8, pos + size, displayW, displayH)
     }
 
     // stsd: 4 bytes (version+flags) + 4 bytes (entry count) before children
     if (type === 'stsd') {
-      patchPasp(buf, pos + 16, pos + size)
+      patchPasp(buf, pos + 16, pos + size, displayW, displayH)
     }
 
     // Video codec sample entry boxes:
     // 8 (header) + 78 (VisualSampleEntry fixed fields) = 86 bytes before children
-    // ISO 14496-12 §12.1.3 VisualSampleEntry layout:
-    //   6 reserved + 2 data-ref-index + 2 pre_defined + 2 reserved
-    //   + 12 pre_defined + 2 width + 2 height + 4 horiz-res + 4 vert-res
-    //   + 4 reserved + 2 frame-count + 32 compressor-name + 2 depth + 2 pre_defined
-    //   = 78 bytes
     const VIDEO_ENTRIES = new Set(['avc1', 'avc3', 'hvc1', 'hev1', 'mp4v', 'dvh1', 'dvhe', 'av01', 'vp08', 'vp09'])
     if (VIDEO_ENTRIES.has(type) && pos + 86 <= end) {
-      patchPasp(buf, pos + 86, pos + size)
+      patchPasp(buf, pos + 86, pos + size, displayW, displayH)
     }
 
     pos += size
@@ -83,10 +99,14 @@ function patchPasp(buf: Buffer, start: number, end: number): void {
 
 /**
  * Buffers the full MP4, patches every pasp box to 1:1 (square pixels),
- * and returns the corrected buffer. If the video is >120 MB we skip
- * patching and stream it as-is to avoid OOM.
+ * patches tkhd display dimensions, and returns the corrected buffer.
+ * If the video is >120 MB we skip patching and stream it as-is to avoid OOM.
  */
-async function fetchAndFixVideo(videoUrl: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+async function fetchAndFixVideo(
+  videoUrl: string,
+  displayW?: number,
+  displayH?: number
+): Promise<{ buffer: Buffer; contentType: string } | null> {
   const res = await fetch(videoUrl, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
@@ -118,8 +138,8 @@ async function fetchAndFixVideo(videoUrl: string): Promise<{ buffer: Buffer; con
 
   const buffer = Buffer.concat(chunks)
 
-  // Patch pasp boxes in-place
-  patchPasp(buffer, 0, buffer.length)
+  // Patch pasp boxes + tkhd dimensions in-place
+  patchPasp(buffer, 0, buffer.length, displayW, displayH)
 
   return { buffer, contentType }
 }
@@ -129,6 +149,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const videoUrl = searchParams.get('url')
   const quality = searchParams.get('quality') ?? 'video'
+
+  // Parse display dimensions from the Twitter video URL (e.g. /1280x720/)
+  let displayW: number | undefined
+  let displayH: number | undefined
+  if (videoUrl) {
+    const m = videoUrl.match(/\/(\d+)x(\d+)\//)
+    if (m) {
+      displayW = parseInt(m[1])
+      displayH = parseInt(m[2])
+    }
+  }
 
   if (!videoUrl) {
     return new Response(JSON.stringify({ error: 'url param required' }), {
@@ -148,7 +179,7 @@ export async function GET(request: NextRequest) {
   const filename = `xdl_${safeQuality}.mp4`
 
   try {
-    const result = await fetchAndFixVideo(videoUrl)
+    const result = await fetchAndFixVideo(videoUrl, displayW, displayH)
 
     if (!result) {
       // File too large — fall back to streaming proxy without patch
