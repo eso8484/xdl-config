@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'XDL — Twitter/X Video Downloader',
-  description: 'Download Twitter and X videos in any quality. Fast, free, no signup required.',
-  keywords: ['twitter video downloader', 'x video downloader', 'download twitter video'],
+  title: 'MNTN — Landing Page',
+  description: 'A cinematic hiking landing page inspired by the MNTN Figma design.',
+  keywords: ['mntn', 'landing page', 'hiking', 'figma'],
   openGraph: {
-    title: 'XDL — Twitter/X Video Downloader',
-    description: 'Download Twitter and X videos in any quality.',
+    title: 'MNTN — Landing Page',
+    description: 'A cinematic hiking landing page inspired by the MNTN Figma design.',
     type: 'website',
   },
 }
@@ -20,10 +20,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased font-body bg-[#0b1d26] text-white">{children}</body>
     </html>
   )
 }
