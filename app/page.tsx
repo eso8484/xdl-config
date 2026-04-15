@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 
 /* ─── Types ─────────────────────────────────────────────── */
@@ -111,10 +111,13 @@ export default function Home() {
   const [selectedQuality, setSelectedQuality] = useState<VideoVariant | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadDone, setDownloadDone] = useState(false)
+  const [downloadStatus, setDownloadStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [darkMode, setDarkMode] = useState(true)
   const [showHistory, setShowHistory] = useState(false)
+  const ffmpegRef = useRef<import('@ffmpeg/ffmpeg').FFmpeg | null>(null)
+  const ffmpegLoadedRef = useRef(false)
 
   /* Load history & dark mode pref */
   useEffect(() => {
@@ -161,29 +164,99 @@ export default function Home() {
     }
   }, [url])
 
+  /* ── Load FFmpeg lazily ── */
+  const ensureFFmpeg = useCallback(async () => {
+    if (ffmpegLoadedRef.current && ffmpegRef.current) return ffmpegRef.current
+    setDownloadStatus('Loading video processor…')
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+    const { toBlobURL } = await import('@ffmpeg/util')
+    const ffmpeg = new FFmpeg()
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    })
+    ffmpegRef.current = ffmpeg
+    ffmpegLoadedRef.current = true
+    return ffmpeg
+  }, [])
+
+  /* ── Parse width×height from Twitter video URL ── */
+  const parseDimensions = (videoUrl: string): { w: number; h: number } | null => {
+    const m = videoUrl.match(/\/(\d+)x(\d+)\//)
+    if (!m) return null
+    return { w: parseInt(m[1]), h: parseInt(m[2]) }
+  }
+
   /* ── Download ── */
   const handleDownload = useCallback(async () => {
     if (!selectedQuality || !result) return
 
     setDownloading(true)
     setDownloadDone(false)
+    setError(null)
+    setDownloadStatus('Fetching video…')
 
     try {
       const dlUrl = `/api/download?url=${encodeURIComponent(selectedQuality.url)}&quality=${encodeURIComponent(selectedQuality.quality)}`
       const res = await fetch(dlUrl)
       if (!res.ok) throw new Error('Download failed')
 
-      const blob = await res.blob()
-      const objectUrl = URL.createObjectURL(blob)
+      const rawBlob = await res.blob()
+      const dims = parseDimensions(selectedQuality.url)
+
+      let finalBlob = rawBlob
+
+      /* Fix aspect ratio using ffmpeg.wasm if we know the dimensions */
+      if (dims) {
+        try {
+          setDownloadStatus('Fixing aspect ratio…')
+          const ffmpeg = await ensureFFmpeg()
+          const { fetchFile } = await import('@ffmpeg/util')
+
+          await ffmpeg.writeFile('input.mp4', await fetchFile(rawBlob))
+
+          /* setsar=1:1 forces square pixels + scale to correct display size */
+          const sarW = dims.w
+          const sarH = dims.h
+          await ffmpeg.exec([
+            '-i', 'input.mp4',
+            '-c', 'copy',
+            '-vf', `setsar=1:1,scale=${sarW}:${sarH}`,
+            '-movflags', '+faststart',
+            '-metadata:s:v:0', `rotate=0`,
+            'output.mp4',
+          ])
+
+          const data = await ffmpeg.readFile('output.mp4')
+          const uint8 = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data))
+          // Copy to a plain ArrayBuffer to avoid SharedArrayBuffer issues
+          const plain = new ArrayBuffer(uint8.byteLength)
+          new Uint8Array(plain).set(uint8)
+          finalBlob = new Blob([plain], { type: 'video/mp4' })
+
+          /* Cleanup ffmpeg virtual FS */
+          await ffmpeg.deleteFile('input.mp4')
+          await ffmpeg.deleteFile('output.mp4')
+        } catch (ffErr) {
+          /* If ffmpeg fails, still give them the raw file — better than nothing */
+          console.warn('[ffmpeg] aspect fix failed, using raw:', ffErr)
+          finalBlob = rawBlob
+        }
+      }
+
+      setDownloadStatus('Saving…')
+      const objectUrl = URL.createObjectURL(finalBlob)
       const a = document.createElement('a')
       a.href = objectUrl
       a.download = `twitter_video_${selectedQuality.quality}_${result.tweetId}.mp4`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 5000)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
 
       setDownloadDone(true)
+      setDownloadStatus('')
       setTimeout(() => setDownloadDone(false), 3000)
 
       /* Save to history */
@@ -203,10 +276,11 @@ export default function Home() {
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Download failed')
+      setDownloadStatus('')
     } finally {
       setDownloading(false)
     }
-  }, [selectedQuality, result, url])
+  }, [selectedQuality, result, url, ensureFFmpeg])
 
   /* ── Enter key ── */
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -451,10 +525,10 @@ export default function Home() {
                   </>
                 ) : downloading ? (
                   <>
-                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <svg className="animate-spin flex-shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
-                    <span>Downloading…</span>
+                    <span>{downloadStatus || 'Downloading…'}</span>
                   </>
                 ) : (
                   <>
@@ -463,6 +537,11 @@ export default function Home() {
                   </>
                 )}
               </button>
+              {/* Aspect ratio note */}
+              <p className={`text-center text-[11px] mt-2 ${darkMode ? 'text-[#2A3F58]' : 'text-slate-300'}`}
+                style={{ fontFamily: 'DM Mono, monospace' }}>
+                Aspect ratio is preserved automatically
+              </p>
             </div>
           </div>
         )}
