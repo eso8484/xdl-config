@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'MNTN — Landing Page',
-  description: 'A cinematic hiking landing page inspired by the MNTN Figma design.',
-  keywords: ['mntn', 'landing page', 'hiking', 'figma'],
+  title: 'XDL — X Video Downloader',
+  description: 'Download X videos with a cinematic ESO-branded interface.',
+  keywords: ['x video downloader', 'xdl', 'eso'],
   openGraph: {
-    title: 'MNTN — Landing Page',
-    description: 'A cinematic hiking landing page inspired by the MNTN Figma design.',
+    title: 'XDL — X Video Downloader',
+    description: 'Download X videos with a cinematic ESO-branded interface.',
     type: 'website',
   },
 }
