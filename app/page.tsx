@@ -21,7 +21,20 @@ const cartIcon = 'https://www.figma.com/api/mcp/asset/ba8a5b94-e694-4ac2-bb70-b8
 const arrowIcon = 'https://www.figma.com/api/mcp/asset/8b3f8111-59da-4aad-a7e0-14af3f87a343'
 
 function LogoMark() {
-  return <span className="tracking-[0.22em]">ESO</span>
+  return (
+    <span className="inline-flex items-center gap-3">
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm bg-[#f0ece4]">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+          <polygon points="14,1.8 24.5,7.9 24.5,20.1 14,26.2 3.5,20.1 3.5,7.9" stroke="#dc6b2f" strokeWidth="1.8" />
+          <path d="M9.4 15.6H13.3V17.1H7.6V10.8H13.2V12.2H9.4V13.3H12.7V14.6H9.4V15.6Z" fill="#111111" />
+          <path d="M15 17.1V15.7L18.2 12.2H15.1V10.8H20.5V12.1L17.3 15.7H20.6V17.1H15Z" fill="#111111" />
+        </svg>
+      </span>
+      <span className="font-body text-[1.95rem] font-extrabold leading-none text-white tracking-tight">
+        ESO<span className="text-[#dc6b2f]">.</span>
+      </span>
+    </span>
+  )
 }
 
 function ArrowLink({ label }: { label: string }) {
